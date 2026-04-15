@@ -52,6 +52,14 @@ docker run -d --name redis -p 6379:6379 redis:7-alpine
 uvicorn goslog_navigator_bot.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+Если доступ к Telegram ограничен сетью, добавьте прокси в `.env`:
+
+```bash
+TELEGRAM_PROXY_URL=http://127.0.0.1:10809
+```
+
+Для `v2rayN` обычно подходит локальный HTTP-прокси на `10809`.
+
 ### 5. Проверьте healthcheck
 
 ```bash

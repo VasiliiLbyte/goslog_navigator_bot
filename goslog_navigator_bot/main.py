@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.types import Update
@@ -25,9 +26,16 @@ setup_logger()
 redis = Redis.from_url(settings.redis_url, decode_responses=True)
 storage = RedisStorage(redis=redis)
 
+bot_session = (
+    AiohttpSession(proxy=settings.telegram_proxy_url)
+    if settings.telegram_proxy_url
+    else AiohttpSession()
+)
+
 bot = Bot(
     token=settings.bot_token.get_secret_value(),
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    session=bot_session,
 )
 
 dp = Dispatcher(storage=storage)

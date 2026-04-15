@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Telegram
     bot_token: SecretStr
     webhook_url: str  # например https://example.com/webhook
+    telegram_proxy_url: str | None = None  # например http://127.0.0.1:10809
 
     # PostgreSQL
     db_url: str  # asyncpg DSN: postgresql+asyncpg://user:pass@host:5432/db
