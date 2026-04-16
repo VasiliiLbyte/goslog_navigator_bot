@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import BigInteger, DateTime, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class Base(DeclarativeBase):
@@ -33,8 +34,10 @@ class WizardSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
-    step: Mapped[str] = mapped_column(String(50), default="start")
-    data: Mapped[str | None] = mapped_column(nullable=True)  # JSON-строка с промежуточными данными
+    # Строка названия шага FSM. Например: waiting_for_inn / generating_pdf / finished.
+    step: Mapped[str] = mapped_column(String(50), default="waiting_for_inn")
+    # JSONB-хранилище всего прогресса wizard. По требованиям модуля 2 — типизация dict.
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -1,5 +1,7 @@
 """Конфигурация приложения — все параметры берутся из .env через Pydantic Settings."""
 
+from typing import Literal
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,13 +18,24 @@ class Settings(BaseSettings):
     webhook_url: str  # например https://example.com/webhook
     telegram_proxy_url: str | None = None  # например http://127.0.0.1:10809
 
+    # Ofdata / FNS (ИНН -> автозаполнение ЕГРИП/ЕГРЮЛ)
+    # Важно: ключ может быть не задан для локального тестирования — тогда wizard уйдёт в fallback.
+    fns_api_base_url: str = "https://api.ofdata.ru/v2"
+    fns_api_key: SecretStr | None = None
+    fns_http_timeout_sec: float = 15.0
+
     # PostgreSQL
     db_url: str  # asyncpg DSN: postgresql+asyncpg://user:pass@host:5432/db
 
     # Redis (для FSM storage)
     redis_url: str = "redis://localhost:6379/0"
 
+    # PDF (временные файлы)
+    pdf_temp_dir: str = "goslog_navigator_bot/bot/temp_pdfs"
+    pdf_delete_after_send: bool = False
+
     # Приложение
+    bot_mode: Literal["webhook", "polling"] = "webhook"
     debug: bool = False
     log_level: str = "INFO"
 

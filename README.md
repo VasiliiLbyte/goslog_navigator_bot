@@ -45,10 +45,12 @@ docker run -d --name redis -p 6379:6379 redis:7-alpine
 ### 4. Запустите бота
 
 ```bash
-# Для локальной разработки (polling — без webhook)
-# TODO: добавить polling-режим
+# Для локальной разработки (polling — без webhook/туннелей)
+# Укажите BOT_MODE=polling в .env
+python -m goslog_navigator_bot.polling
 
 # Для webhook-режима (нужен публичный URL, например через ngrok)
+# Укажите BOT_MODE=webhook в .env
 uvicorn goslog_navigator_bot.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 

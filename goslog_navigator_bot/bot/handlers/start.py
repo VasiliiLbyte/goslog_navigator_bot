@@ -10,7 +10,7 @@ from goslog_navigator_bot.bot.keyboards.inline import (
     business_type_keyboard,
     okved_keyboard,
 )
-from goslog_navigator_bot.bot.states.user import OnboardingState
+from goslog_navigator_bot.bot.states.user import GoslogWizardState, OnboardingState
 
 router = Router(name="start")
 
@@ -86,9 +86,11 @@ async def on_okved_answer(callback: CallbackQuery, state: FSMContext) -> None:
         await state.update_data(has_okved_5229=True)
         await callback.message.edit_text(  # type: ignore[union-attr]
             "✅ ОКВЭД 52.29 есть — значит, подключение к ГосЛог для вас <b>обязательно</b>.\n\n"
-            "Скоро я покажу пошаговый план. Следите за обновлениями!",
+            "Теперь шаг 1 из 5: введите ИНН для автозаполнения данных."
+            "\n\n"
+            "Это помощник, не юридическая консультация.",
         )
-        await state.clear()
+        await state.set_state(GoslogWizardState.waiting_for_inn)
 
     elif answer == "no":
         await state.update_data(has_okved_5229=False)
@@ -100,13 +102,14 @@ async def on_okved_answer(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
 
     elif answer == "check_inn":
-        await state.set_state(OnboardingState.waiting_inn)
+        # Запускаем wizard: пользователь попросил автопроверку по ИНН.
+        await state.update_data(has_okved_5229=None)
         await callback.message.edit_text(  # type: ignore[union-attr]
             "🔍 <b>Автоматическая проверка по ИНН</b>\n\n"
-            "🚧 Эта функция в разработке — скоро будет автозаполнение.\n"
-            "Пока вы можете проверить ОКВЭД вручную на сайте ФНС:\n"
-            "https://egrul.nalog.ru/\n\n"
-            "Введите /start, чтобы начать заново.",
+            "Шаг 1 из 5: введите ИНН для автозаполнения данных."
+            "\n\n"
+            "Это помощник, не юридическая консультация.",
         )
+        await state.set_state(GoslogWizardState.waiting_for_inn)
 
     await callback.answer()

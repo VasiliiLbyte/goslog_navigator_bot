@@ -9,3 +9,13 @@ class OnboardingState(StatesGroup):
     choosing_business_type = State()  # ИП или ООО
     checking_okved = State()          # Есть ли ОКВЭД 52.29
     waiting_inn = State()             # Ввод ИНН (заглушка)
+
+
+class GoslogWizardState(StatesGroup):
+    """5-шаговый wizard регистрации/подготовки к подаче в ГосЛог."""
+
+    waiting_for_inn = State()  # Шаг 1: ввод ИНН
+    waiting_for_confirmation = State()  # Шаг 2: подтверждение автоданных
+    waiting_for_phone_email = State()  # Шаг 3: телефон/email/адрес
+    generating_pdf = State()  # Шаг 4: генерация PDF
+    finished = State()  # Шаг 5: инструкция + завершение

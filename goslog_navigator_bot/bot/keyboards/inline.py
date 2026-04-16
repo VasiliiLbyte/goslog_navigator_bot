@@ -30,3 +30,48 @@ def okved_keyboard() -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def wizard_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Шаг 2: подтверждение автозаполненных данных."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Всё верно ✅",
+                    callback_data="wizard_confirm:ok",
+                ),
+                InlineKeyboardButton(
+                    text="Исправить ✏️",
+                    callback_data="wizard_confirm:edit",
+                ),
+            ]
+        ]
+    )
+
+
+def wizard_pdf_keyboard() -> InlineKeyboardMarkup:
+    """Шаг 4: генерация PDF или отмена wizard."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Генерировать PDF",
+                    callback_data="wizard_pdf:generate",
+                ),
+                InlineKeyboardButton(
+                    text="Отмена",
+                    callback_data="wizard_pdf:cancel",
+                ),
+            ]
+        ]
+    )
+
+
+def wizard_finish_keyboard() -> InlineKeyboardMarkup:
+    """Шаг 5: кнопка завершения после отправки через Госуслуги."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Готово, отправил", callback_data="wizard_finish:done")]
+        ]
+    )

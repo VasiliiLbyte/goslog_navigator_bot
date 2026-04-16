@@ -15,6 +15,7 @@ from loguru import logger
 from redis.asyncio import Redis
 
 from goslog_navigator_bot.bot.handlers.start import router as start_router
+from goslog_navigator_bot.bot.handlers.wizard import wizard_router
 from goslog_navigator_bot.core.config import settings
 from goslog_navigator_bot.core.logger import setup_logger
 from goslog_navigator_bot.database.session import engine
@@ -40,6 +41,7 @@ bot = Bot(
 
 dp = Dispatcher(storage=storage)
 dp.include_router(start_router)
+dp.include_router(wizard_router)
 
 
 # ── Lifespan: startup / shutdown ────────────────────────────────────
@@ -50,10 +52,16 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """При старте — webhook + проверка коннектов; при остановке — cleanup."""
     logger.info("🚀 Запуск ГосЛог Навигатор бота...")
 
-    # Устанавливаем webhook
-    webhook_url = f"{settings.webhook_url}/webhook"
-    await bot.set_webhook(webhook_url, drop_pending_updates=True)
-    logger.info("Webhook установлен: {url}", url=webhook_url)
+    # Устанавливаем webhook только в webhook-режиме.
+    if settings.bot_mode == "webhook":
+        webhook_url = f"{settings.webhook_url}/webhook"
+        await bot.set_webhook(webhook_url, drop_pending_updates=True)
+        logger.info("Webhook установлен: {url}", url=webhook_url)
+    else:
+        logger.warning(
+            "BOT_MODE={mode}: webhook не устанавливается, используйте polling entrypoint.",
+            mode=settings.bot_mode,
+        )
 
     # Проверяем Redis
     await redis.ping()
@@ -68,7 +76,8 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("⏹ Остановка бота...")
-    await bot.delete_webhook()
+    if settings.bot_mode == "webhook":
+        await bot.delete_webhook()
     await bot.session.close()
     await redis.aclose()
     await engine.dispose()
