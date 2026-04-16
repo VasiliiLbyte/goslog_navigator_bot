@@ -3,8 +3,8 @@
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -78,3 +78,15 @@ class Counterparty(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+async def create_all_tables() -> None:
+    """
+    Временный фикс: создать все таблицы по метаданным ORM (в т.ч. counterparties).
+
+    Предпочтительно использовать Alembic; эта функция страхует отсутствие миграций.
+    """
+    from goslog_navigator_bot.database.session import engine
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

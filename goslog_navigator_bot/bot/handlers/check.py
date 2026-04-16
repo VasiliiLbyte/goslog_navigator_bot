@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -13,7 +14,7 @@ from aiogram.types import Message
 from loguru import logger
 
 from goslog_navigator_bot.bot.handlers.wizard import _normalize_inn
-from goslog_navigator_bot.bot.states.user import AlertsOwnInnState, CounterpartyCheckState
+from goslog_navigator_bot.bot.states.user import AlertsOwnInnState, CheckINNState
 from goslog_navigator_bot.database.repositories.counterparties import (
     list_counterparties_for_user,
     upsert_counterparty_from_check,
@@ -25,6 +26,7 @@ from goslog_navigator_bot.database.repositories.user_profiles import (
 )
 from goslog_navigator_bot.database.session import async_session
 from goslog_navigator_bot.services.counterparty_verify import (
+    InnCheckResult,
     format_inn_card,
     format_registry_line,
     run_inn_check,
@@ -44,12 +46,26 @@ def _postpone() -> str:
     return "Сервисы проверки сейчас недоступны. Проверим позже." + _d()
 
 
+async def daily_alerts() -> None:
+    """Заглушка для APScheduler; позже — реальная перепроверка подписчиков."""
+    logger.info("🔔 Ежедневные алерты запущены (пока пустые)")
+
+
+async def _check_counterparty(inn: str, user_id: int) -> InnCheckResult:
+    """Проверка ИНН через внешние API + сохранение снимка в Counterparty."""
+    result = await run_inn_check(inn)
+    async with async_session() as session:
+        await upsert_counterparty_from_check(session, user_id=user_id, result=result)
+        await session.commit()
+    return result
+
+
 @check_router.message(Command("проверить_инн"))
 async def cmd_check_inn(message: Message, state: FSMContext) -> None:
     """Старт сценария: ждём ИНН от пользователя."""
     uid = message.from_user.id  # type: ignore[union-attr]
     logger.info("Модуль3: пользователь {uid} вызвал /проверить_инн", uid=uid)
-    await state.set_state(CounterpartyCheckState.waiting_inn)
+    await state.set_state(CheckINNState.waiting_for_inn)
     await message.answer(
         "Введите <b>ИНН</b> контрагента (10 цифр для ООО или 12 для ИП).\n"
         "Я запрошу данные Ofdata и попробую сверить открытый реестр ГосЛог."
@@ -57,9 +73,9 @@ async def cmd_check_inn(message: Message, state: FSMContext) -> None:
     )
 
 
-@check_router.message(StateFilter(CounterpartyCheckState.waiting_inn), F.text)
-async def on_inn_for_check(message: Message, state: FSMContext) -> None:
-    """Разбор ИНН, вызов сервисов, сохранение в БД."""
+@check_router.message(StateFilter(CheckINNState.waiting_for_inn), F.text)
+async def on_inn_input(message: Message, state: FSMContext) -> None:
+    """Текстовый ввод ИНН после /проверить_инн: проверка, БД, карточка."""
     uid = message.from_user.id  # type: ignore[union-attr]
     inn = _normalize_inn((message.text or "").strip())
     logger.info("Модуль3: пользователь {uid} прислал ИНН для проверки", uid=uid)
@@ -73,26 +89,19 @@ async def on_inn_for_check(message: Message, state: FSMContext) -> None:
         return
 
     try:
-        result = await run_inn_check(inn)
+        result = await _check_counterparty(inn, uid)
+    except httpx.HTTPError as e:
+        logger.warning("Модуль3: httpx при проверке ИНН uid={uid}: {e!s}", uid=uid, e=e)
+        await state.clear()
+        await message.answer(_postpone())
+        return
     except Exception:
-        logger.exception("Модуль3: сбой run_inn_check uid={uid}", uid=uid)
+        logger.exception("Модуль3: сбой _check_counterparty uid={uid}", uid=uid)
         await state.clear()
         await message.answer(_postpone())
         return
 
-    try:
-        async with async_session() as session:
-            await upsert_counterparty_from_check(session, user_id=uid, result=result)
-            await session.commit()
-        logger.info("Модуль3: контрагент сохранён uid={uid} inn={inn}", uid=uid, inn=inn)
-    except Exception:
-        logger.exception("Модуль3: ошибка сохранения контрагента uid={uid}", uid=uid)
-        await state.clear()
-        await message.answer(
-            "Проверка выполнена, но не удалось записать в базу. Попробуйте позже." + _d()
-        )
-        return
-
+    logger.info("Модуль3: контрагент сохранён uid={uid} inn={inn}", uid=uid, inn=inn)
     await state.clear()
     await message.answer(format_inn_card(result) + _d())
 

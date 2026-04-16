@@ -7,16 +7,18 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 from redis.asyncio import Redis
 
-from goslog_navigator_bot.bot.handlers.check import check_router
+from goslog_navigator_bot.bot.handlers.check import check_router, daily_alerts
 from goslog_navigator_bot.bot.handlers.start import router as start_router
 from goslog_navigator_bot.bot.handlers.wizard import wizard_router
 from goslog_navigator_bot.core.config import settings
 from goslog_navigator_bot.core.logger import setup_logger
+from goslog_navigator_bot.database.models import create_all_tables
 from goslog_navigator_bot.database.session import engine
-from goslog_navigator_bot.scheduler.daily_alerts import build_scheduler
 
 
 async def run_polling() -> None:
@@ -42,12 +44,21 @@ async def run_polling() -> None:
     dp.include_router(wizard_router)
     dp.include_router(check_router)
 
-    sched = build_scheduler(bot)
+    sched: AsyncIOScheduler | None = None
+    if settings.daily_alerts_enabled:
+        sched = AsyncIOScheduler(timezone=settings.daily_alerts_timezone)
+        sched.add_job(
+            daily_alerts,
+            trigger=CronTrigger(
+                hour=settings.daily_alerts_hour,
+                minute=settings.daily_alerts_minute,
+                timezone=settings.daily_alerts_timezone,
+            ),
+            id="daily_alerts",
+            replace_existing=True,
+        )
 
     try:
-        if sched is not None:
-            sched.start()
-            logger.info("APScheduler: ежедневные алерты запущены (polling)")
         logger.info("🚀 Запуск бота в polling-режиме...")
 
         await redis.ping()
@@ -56,6 +67,13 @@ async def run_polling() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(lambda _: None)
         logger.info("PostgreSQL подключён: OK")
+
+        await create_all_tables()
+        logger.info("✅ Все таблицы созданы")
+
+        if sched is not None:
+            sched.start()
+            logger.info("✅ Ежедневные алерты запланированы на 9:00")
 
         # В polling-режиме удаляем webhook, чтобы Telegram отдавал апдейты через getUpdates.
         await bot.delete_webhook(drop_pending_updates=True)

@@ -21,10 +21,10 @@ class GoslogWizardState(StatesGroup):
     finished = State()  # Шаг 5: инструкция + завершение
 
 
-class CounterpartyCheckState(StatesGroup):
-    """Модуль 3: ввод ИНН для проверки контрагента."""
+class CheckINNState(StatesGroup):
+    """Модуль 3: ввод ИНН после команды /проверить_инн."""
 
-    waiting_inn = State()
+    waiting_for_inn = State()
 
 
 class AlertsOwnInnState(StatesGroup):
