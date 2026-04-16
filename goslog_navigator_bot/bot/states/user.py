@@ -19,3 +19,15 @@ class GoslogWizardState(StatesGroup):
     waiting_for_phone_email = State()  # Шаг 3: телефон/email/адрес
     generating_pdf = State()  # Шаг 4: генерация PDF
     finished = State()  # Шаг 5: инструкция + завершение
+
+
+class CounterpartyCheckState(StatesGroup):
+    """Модуль 3: ввод ИНН для проверки контрагента."""
+
+    waiting_inn = State()
+
+
+class AlertsOwnInnState(StatesGroup):
+    """Модуль 3: ввод собственного ИНН для утренней проверки реестра ГосЛог."""
+
+    waiting_own_inn = State()

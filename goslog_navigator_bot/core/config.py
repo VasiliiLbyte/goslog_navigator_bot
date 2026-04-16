@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     fns_api_key: SecretStr | None = None
     fns_http_timeout_sec: float = 15.0
 
+    # Публичная проверка реестра ГосЛог (HTML/JSON — зависит от фактического API сайта)
+    goslog_public_check_url: str = "https://goslog.ru/check"
+    goslog_http_timeout_sec: float = 12.0
+
+    # Ежедневные алерты (AsyncIOScheduler, часовой пояс IANA)
+    daily_alerts_enabled: bool = True
+    daily_alerts_hour: int = 9
+    daily_alerts_minute: int = 0
+    daily_alerts_timezone: str = "Europe/Moscow"
+
     # PostgreSQL
     db_url: str  # asyncpg DSN: postgresql+asyncpg://user:pass@host:5432/db
 

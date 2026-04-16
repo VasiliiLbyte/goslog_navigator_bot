@@ -10,11 +10,13 @@ from aiogram.fsm.storage.redis import RedisStorage
 from loguru import logger
 from redis.asyncio import Redis
 
+from goslog_navigator_bot.bot.handlers.check import check_router
 from goslog_navigator_bot.bot.handlers.start import router as start_router
 from goslog_navigator_bot.bot.handlers.wizard import wizard_router
 from goslog_navigator_bot.core.config import settings
 from goslog_navigator_bot.core.logger import setup_logger
 from goslog_navigator_bot.database.session import engine
+from goslog_navigator_bot.scheduler.daily_alerts import build_scheduler
 
 
 async def run_polling() -> None:
@@ -38,8 +40,14 @@ async def run_polling() -> None:
     dp = Dispatcher(storage=storage)
     dp.include_router(start_router)
     dp.include_router(wizard_router)
+    dp.include_router(check_router)
+
+    sched = build_scheduler(bot)
 
     try:
+        if sched is not None:
+            sched.start()
+            logger.info("APScheduler: ежедневные алерты запущены (polling)")
         logger.info("🚀 Запуск бота в polling-режиме...")
 
         await redis.ping()
@@ -55,6 +63,9 @@ async def run_polling() -> None:
 
         await dp.start_polling(bot)
     finally:
+        if sched is not None:
+            sched.shutdown(wait=False)
+            logger.info("APScheduler остановлен (polling)")
         logger.info("⏹ Остановка polling-бота...")
         await bot.session.close()
         await redis.aclose()

@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+goslog_navigator_bot/bot/temp_pdfs/
 logs/
 *.egg-info/
 dist/

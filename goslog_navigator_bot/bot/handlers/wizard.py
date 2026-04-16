@@ -12,6 +12,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message
 from loguru import logger
 from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from goslog_navigator_bot.bot.keyboards.inline import (
@@ -197,6 +199,112 @@ def _format_okved_preview(okved_items: list[dict[str, str]]) -> str:
     return ", ".join([f"{it.get('code')}" for it in items if it.get("code")])
 
 
+def _register_pdf_font() -> tuple[str, str]:
+    """
+    Регистрируем Unicode-шрифт для корректной кириллицы в PDF.
+    Возвращает (normal_font_name, bold_font_name).
+    """
+    regular_name = "GoslogSans"
+    bold_name = "GoslogSansBold"
+
+    if regular_name in pdfmetrics.getRegisteredFontNames() and bold_name in pdfmetrics.getRegisteredFontNames():
+        return regular_name, bold_name
+
+    candidates: list[tuple[str, str]] = [
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/Library/Fonts/DejaVuSans.ttf",
+            "/Library/Fonts/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        ),
+    ]
+
+    for regular_path, bold_path in candidates:
+        if Path(regular_path).exists() and Path(bold_path).exists():
+            pdfmetrics.registerFont(TTFont(regular_name, regular_path))
+            pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+            return regular_name, bold_name
+
+    # Фолбэк (может не отрисовать кириллицу в некоторых окружениях)
+    return "Helvetica", "Helvetica-Bold"
+
+
+def _safe(value: Any) -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or "—"
+
+
+def _okved_main_and_extra(okved_items: list[dict[str, str]]) -> tuple[str, str]:
+    if not okved_items:
+        return "—", "—"
+    main = _safe(okved_items[0].get("code"))
+    extra_codes = [_safe(it.get("code")) for it in okved_items[1:] if it.get("code")]
+    return main, ", ".join(extra_codes) if extra_codes else "—"
+
+
+def _draw_labeled_block(
+    c: canvas.Canvas,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    label: str,
+    value: str,
+    label_font: str,
+    text_font: str,
+) -> float:
+    """
+    Рисует поле с подписью и значением в рамке.
+    Возвращает новую Y-координату (top следующего блока).
+    """
+    label_size = 9
+    text_size = 10
+    pad_x = 8
+    pad_y = 6
+
+    c.setFont(label_font, label_size)
+    c.drawString(left, top, label)
+
+    max_text_width = width - (pad_x * 2)
+    words = value.split()
+    lines: list[str] = []
+    current = ""
+
+    for w in words:
+        candidate = f"{current} {w}".strip()
+        if pdfmetrics.stringWidth(candidate, text_font, text_size) <= max_text_width:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            current = w
+    if current:
+        lines.append(current)
+    if not lines:
+        lines = ["—"]
+
+    text_height = len(lines) * 14
+    box_height = max(26, text_height + (pad_y * 2))
+    box_top = top - 4
+    box_bottom = box_top - box_height
+
+    c.rect(left, box_bottom, width, box_height, stroke=1, fill=0)
+    c.setFont(text_font, text_size)
+
+    y = box_top - pad_y - 10
+    for line in lines:
+        c.drawString(left + pad_x, y, line)
+        y -= 14
+
+    return box_bottom - 12
+
+
 def _generate_pdf_sync(pdf_path: Path, data: dict[str, Any]) -> None:
     """
     Синхронная генерация PDF через reportlab.
@@ -205,42 +313,157 @@ def _generate_pdf_sync(pdf_path: Path, data: dict[str, Any]) -> None:
 
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(pdf_path), pagesize=A4)
-    width, height = A4
+    page_width, page_height = A4
+    margin = 40
+    content_width = page_width - (margin * 2)
 
-    text = c.beginText(40, height - 50)
-    text.setFont("Helvetica-Bold", 14)
-    text.textLine("Уведомление о постановке на учёт в системе ГосЛог")
+    font_regular, font_bold = _register_pdf_font()
 
-    text.setFont("Helvetica", 10)
-    created_at = datetime.now(timezone.utc).astimezone().strftime("%d.%m.%Y")
-    text.textLine(f"Дата генерации: {created_at}")
-    text.textLine(" ")
+    now_local = datetime.now(timezone.utc).astimezone()
+    date_str = now_local.strftime("%d.%m.%Y")
+    doc_number = f"GL-{now_local.strftime('%Y%m%d')}-{now_local.strftime('%H%M%S')}"
 
-    biz_label = "ИП" if data.get("business_type") == "ip" else "ООО"
-    text.textLine(f"Форма бизнеса: {biz_label}")
-    text.textLine(f"ИНН: {data.get('inn') or '—'}")
-    text.textLine(f"ОГРН/ОГРНИП: {data.get('ogrn') or '—'}")
-    text.textLine(f"Наименование: {data.get('name') or '—'}")
-    text.textLine(f"Адрес: {data.get('address') or '—'}")
+    okved_items = data.get("okved") or []
+    main_okved, extra_okved = _okved_main_and_extra(okved_items if isinstance(okved_items, list) else [])
 
-    okved_preview = _format_okved_preview(data.get("okved") or [])
-    text.textLine(f"ОКВЭДы (превью): {okved_preview}")
-    text.textLine(" ")
+    # Header
+    c.setFont(font_bold, 13)
+    c.drawCentredString(page_width / 2, page_height - margin, "УВЕДОМЛЕНИЕ о включении в реестр транспортных экспедиторов")
+    c.setFont(font_regular, 11)
+    c.drawCentredString(page_width / 2, page_height - margin - 18, "Государственная информационная платформа ГосЛог")
+    c.setFont(font_regular, 10)
+    c.drawRightString(page_width - margin, page_height - margin - 36, f"Дата: {date_str}")
+    c.drawRightString(page_width - margin, page_height - margin - 50, f"№ {doc_number}")
 
-    phone = data.get("phone") or "—"
-    email = data.get("email") or "—"
-    fact_address = data.get("fact_address") or "—"
-    text.textLine(f"Телефон: {phone}")
-    text.textLine(f"Email: {email}")
-    text.textLine(f"Фактический адрес: {fact_address}")
-    text.textLine(" ")
+    y = page_height - margin - 78
+    c.line(margin, y, page_width - margin, y)
+    y -= 18
 
-    text.textLine(
-        "Примечание: это упрощённый шаблон черновика (для подготовки и подачи). "
-        "Фактическое содержание формы уточняйте в актуальной редакции."
+    legal_title = "Полное наименование организации" if data.get("business_type") == "ooo" else "ФИО индивидуального предпринимателя"
+    y = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y,
+        width=content_width,
+        label=legal_title,
+        value=_safe(data.get("name")),
+        label_font=font_bold,
+        text_font=font_regular,
     )
 
-    c.drawText(text)
+    half_gap = 12
+    half_w = (content_width - half_gap) / 2
+    y_row_top = y
+    y_left = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y_row_top,
+        width=half_w,
+        label="ИНН",
+        value=_safe(data.get("inn")),
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y_right = _draw_labeled_block(
+        c,
+        left=margin + half_w + half_gap,
+        top=y_row_top,
+        width=half_w,
+        label="ОГРН / ОГРНИП",
+        value=_safe(data.get("ogrn")),
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y = min(y_left, y_right)
+
+    y = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y,
+        width=content_width,
+        label="Юридический адрес",
+        value=_safe(data.get("address")),
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y,
+        width=content_width,
+        label="Фактический адрес",
+        value=_safe(data.get("fact_address")),
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+
+    y_row_top = y
+    y_left = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y_row_top,
+        width=half_w,
+        label="Контактный телефон",
+        value=_safe(data.get("phone")),
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y_right = _draw_labeled_block(
+        c,
+        left=margin + half_w + half_gap,
+        top=y_row_top,
+        width=half_w,
+        label="Email",
+        value=_safe(data.get("email")),
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y = min(y_left, y_right)
+
+    y = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y,
+        width=content_width,
+        label="Основной ОКВЭД",
+        value=main_okved,
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y,
+        width=content_width,
+        label="Дополнительные ОКВЭД",
+        value=extra_okved,
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+    y = _draw_labeled_block(
+        c,
+        left=margin,
+        top=y,
+        width=content_width,
+        label="Дата начала деятельности",
+        value=date_str,
+        label_font=font_bold,
+        text_font=font_regular,
+    )
+
+    # Signature + footer
+    signature_y = max(y - 8, 115)
+    c.setFont(font_regular, 10)
+    c.drawString(margin, signature_y, "Подписано собственноручно / КЭП")
+    c.line(margin + 210, signature_y - 2, page_width - margin, signature_y - 2)
+
+    c.setFont(font_regular, 7.5)
+    c.drawString(
+        margin,
+        55,
+        "Сформировано с помощью ИИ-помощника ГосЛог Навигатор. Не является юридической консультацией.",
+    )
+
     c.showPage()
     c.save()
 
@@ -527,10 +750,10 @@ async def on_generate_pdf(callback: CallbackQuery, state: FSMContext) -> None:
         "business_type": business_type if business_type in {"ip", "ooo"} else wizard_data.get("business_type"),
     }
 
-    pdf_dir = Path(settings.pdf_temp_dir)
+    pdf_dir = Path("goslog_navigator_bot/bot/temp_pdfs")
     pdf_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    pdf_filename = f"goslog_notice_{user_id}_{timestamp}.pdf"
+    pdf_filename = f"{user_id}_{timestamp}.pdf"
     pdf_path = pdf_dir / pdf_filename
 
     await update_step(user_id, "generating_pdf")

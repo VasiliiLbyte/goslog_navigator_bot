@@ -14,11 +14,13 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from redis.asyncio import Redis
 
+from goslog_navigator_bot.bot.handlers.check import check_router
 from goslog_navigator_bot.bot.handlers.start import router as start_router
 from goslog_navigator_bot.bot.handlers.wizard import wizard_router
 from goslog_navigator_bot.core.config import settings
 from goslog_navigator_bot.core.logger import setup_logger
 from goslog_navigator_bot.database.session import engine
+from goslog_navigator_bot.scheduler.daily_alerts import build_scheduler
 
 # ── Инициализация ───────────────────────────────────────────────────
 
@@ -42,6 +44,7 @@ bot = Bot(
 dp = Dispatcher(storage=storage)
 dp.include_router(start_router)
 dp.include_router(wizard_router)
+dp.include_router(check_router)
 
 
 # ── Lifespan: startup / shutdown ────────────────────────────────────
@@ -50,6 +53,7 @@ dp.include_router(wizard_router)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """При старте — webhook + проверка коннектов; при остановке — cleanup."""
+    sched = None
     logger.info("🚀 Запуск ГосЛог Навигатор бота...")
 
     # Устанавливаем webhook только в webhook-режиме.
@@ -72,7 +76,18 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         await conn.run_sync(lambda _: None)
     logger.info("PostgreSQL подключён: OK")
 
-    yield
+    # Модуль 3: ежедневные алерты (APScheduler)
+    sched = build_scheduler(bot)
+    if sched is not None:
+        sched.start()
+        logger.info("APScheduler: ежедневные алерты запущены")
+
+    try:
+        yield
+    finally:
+        if sched is not None:
+            sched.shutdown(wait=False)
+            logger.info("APScheduler остановлен")
 
     # Shutdown
     logger.info("⏹ Остановка бота...")

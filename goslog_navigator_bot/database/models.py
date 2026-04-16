@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -25,6 +25,12 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Модуль 3: ежедневные алерты в Telegram
+    daily_alerts_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    # ИНН «себя» для проверки включения в реестр ГосЛог в рамках утреннего отчёта
+    own_inn_for_alerts: Mapped[str | None] = mapped_column(String(12), nullable=True)
 
 
 class WizardSession(Base):
@@ -38,6 +44,37 @@ class WizardSession(Base):
     step: Mapped[str] = mapped_column(String(50), default="waiting_for_inn")
     # JSONB-хранилище всего прогресса wizard. По требованиям модуля 2 — типизация dict.
     data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Counterparty(Base):
+    """
+    Контрагент, проверенный пользователем по ИНН (модуль 3).
+
+    Храним снимок последней проверки + флаг по публичному реестру ГосЛог.
+    """
+
+    __tablename__ = "counterparties"
+    __table_args__ = (UniqueConstraint("user_id", "inn", name="uq_counterparties_user_inn"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    inn: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    display_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    okved_main: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    okved_extra: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reg_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # True — в реестре, False — не найден, None — не удалось определить
+    in_goslog_registry: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    goslog_check_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    needs_attention: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    raw_ofdata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    last_checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
