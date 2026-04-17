@@ -21,6 +21,7 @@ from goslog_navigator_bot.bot.keyboards.inline import (
     wizard_finish_keyboard,
     wizard_pdf_keyboard,
 )
+from goslog_navigator_bot.bot.keyboards.reply import get_main_menu_keyboard
 from goslog_navigator_bot.bot.states.user import GoslogWizardState
 from goslog_navigator_bot.core.config import settings
 from goslog_navigator_bot.database.repositories.wizard_sessions import (
@@ -852,6 +853,10 @@ async def on_finish_done(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.edit_text(
         "Спасибо! Я отметил, что вы отправили уведомление через Госуслуги."
         + _disclaimer_line()
+    )
+    await callback.message.answer(
+        "Навигационное меню готово к использованию.",
+        reply_markup=get_main_menu_keyboard(),
     )
     await callback.answer()
 

@@ -14,6 +14,7 @@ from aiogram.types import Message
 from loguru import logger
 
 from goslog_navigator_bot.bot.handlers.wizard import _normalize_inn
+from goslog_navigator_bot.bot.keyboards.reply import get_main_menu_keyboard
 from goslog_navigator_bot.bot.states.user import AlertsOwnInnState, CheckINNState
 from goslog_navigator_bot.database.repositories.counterparties import (
     list_counterparties_for_user,
@@ -103,7 +104,10 @@ async def on_inn_input(message: Message, state: FSMContext) -> None:
 
     logger.info("Модуль3: контрагент сохранён uid={uid} inn={inn}", uid=uid, inn=inn)
     await state.clear()
-    await message.answer(format_inn_card(result) + _d())
+    await message.answer(
+        format_inn_card(result) + _d(),
+        reply_markup=get_main_menu_keyboard(),
+    )
 
 
 @check_router.message(Command("контрагенты"))

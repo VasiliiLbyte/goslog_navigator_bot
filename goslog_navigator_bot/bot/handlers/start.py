@@ -10,6 +10,7 @@ from goslog_navigator_bot.bot.keyboards.inline import (
     business_type_keyboard,
     okved_keyboard,
 )
+from goslog_navigator_bot.bot.keyboards.reply import get_main_menu_keyboard
 from goslog_navigator_bot.bot.states.user import GoslogWizardState, OnboardingState
 
 router = Router(name="start")
@@ -35,6 +36,10 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         "и подготовить ваш бизнес к подключению.\n\n"
         "Для начала — какая у вас форма бизнеса?",
         reply_markup=business_type_keyboard(),
+    )
+    await message.answer(
+        "Для удобной навигации используйте меню ниже.",
+        reply_markup=get_main_menu_keyboard(),
     )
 
 
