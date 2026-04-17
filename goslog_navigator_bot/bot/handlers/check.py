@@ -6,17 +6,21 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove
 from loguru import logger
+from sqlalchemy import func, select
 
 from goslog_navigator_bot.bot.handlers.start import cmd_start
 from goslog_navigator_bot.bot.handlers.wizard import _normalize_inn
 from goslog_navigator_bot.bot.keyboards.reply import get_main_menu_keyboard
 from goslog_navigator_bot.bot.states.user import AlertsOwnInnState, CheckINNState
+from goslog_navigator_bot.database.models import Counterparty, Subscription
 from goslog_navigator_bot.database.repositories.counterparties import (
     list_counterparties_for_user,
     upsert_counterparty_from_check,
@@ -60,6 +64,29 @@ async def _check_counterparty(inn: str, user_id: int) -> InnCheckResult:
         await upsert_counterparty_from_check(session, user_id=user_id, result=result)
         await session.commit()
     return result
+
+
+async def _get_user_tier(user_id: int) -> str:
+    now = datetime.now(UTC)
+    async with async_session() as session:
+        sub = await session.scalar(select(Subscription).where(Subscription.user_id == user_id))
+        if sub and sub.expires_at > now and sub.tier in {"start", "business"}:
+            return sub.tier
+    return "free"
+
+
+async def _get_monthly_checks_used(user_id: int) -> int:
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    async with async_session() as session:
+        count = await session.scalar(
+            select(func.count(Counterparty.id)).where(
+                Counterparty.user_id == user_id,
+                Counterparty.created_at >= month_start,
+                Counterparty.created_at <= now,
+            )
+        )
+    return int(count or 0)
 
 
 @check_router.message(Command("проверить_инн"))
@@ -146,6 +173,19 @@ async def on_inn_input(message: Message, state: FSMContext) -> None:
         )
         return
 
+    tier = await _get_user_tier(uid)
+    if tier == "free":
+        used = await _get_monthly_checks_used(uid)
+        if used >= 3:
+            await state.clear()
+            await message.answer(
+                "Лимит free-тарифа исчерпан: 3 проверки контрагентов в месяц.\n"
+                "Перейдите на платный тариф через /тариф или кнопку «💰 Тариф»."
+                + _d(),
+                reply_markup=get_main_menu_keyboard(),
+            )
+            return
+
     try:
         result = await _check_counterparty(inn, uid)
     except httpx.HTTPError as e:
@@ -210,6 +250,15 @@ async def cmd_alerts_on(message: Message) -> None:
     uid = message.from_user.id  # type: ignore[union-attr]
     fu = message.from_user  # type: ignore[union-attr]
     logger.info("Модуль3: пользователь {uid} включил алерты", uid=uid)
+    tier = await _get_user_tier(uid)
+    if tier == "free":
+        await message.answer(
+            "Ежедневные алерты доступны на тарифах Start/Business.\n"
+            "Откройте /тариф для подключения."
+            + _d(),
+            reply_markup=get_main_menu_keyboard(),
+        )
+        return
     try:
         async with async_session() as session:
             await ensure_user(

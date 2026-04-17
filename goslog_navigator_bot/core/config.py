@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     daily_alerts_minute: int = 0
     daily_alerts_timezone: str = "Europe/Moscow"
 
+    # YooKassa
+    yookassa_shop_id: str | None = None
+    yookassa_secret_key: SecretStr | None = None
+    yookassa_return_url: str = "https://t.me"
+
     # PostgreSQL
     db_url: str  # asyncpg DSN: postgresql+asyncpg://user:pass@host:5432/db
 

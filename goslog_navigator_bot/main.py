@@ -15,6 +15,10 @@ from loguru import logger
 from redis.asyncio import Redis
 
 from goslog_navigator_bot.bot.handlers.check import check_router
+from goslog_navigator_bot.bot.handlers.payment import (
+    payment_router,
+    process_yookassa_webhook,
+)
 from goslog_navigator_bot.bot.handlers.start import router as start_router
 from goslog_navigator_bot.bot.handlers.wizard import wizard_router
 from goslog_navigator_bot.core.config import settings
@@ -45,6 +49,7 @@ dp = Dispatcher(storage=storage)
 dp.include_router(start_router)
 dp.include_router(wizard_router)
 dp.include_router(check_router)
+dp.include_router(payment_router)
 
 
 # ── Lifespan: startup / shutdown ────────────────────────────────────
@@ -115,6 +120,14 @@ async def telegram_webhook(request: Request) -> JSONResponse:
     update = Update.model_validate(update_data, context={"bot": bot})
     await dp.feed_update(bot=bot, update=update)
     return JSONResponse(content={"ok": True})
+
+
+@app.post("/yookassa/webhook")
+async def yookassa_webhook(request: Request) -> JSONResponse:
+    """Webhook-обработчик событий оплаты ЮKassa."""
+    payload = await request.json()
+    result = await process_yookassa_webhook(payload)
+    return JSONResponse(content=result)
 
 
 @app.get("/health")

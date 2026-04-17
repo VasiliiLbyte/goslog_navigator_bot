@@ -2,9 +2,18 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -31,6 +40,12 @@ class User(Base):
     )
     # ИНН «себя» для проверки включения в реестр ГосЛог в рамках утреннего отчёта
     own_inn_for_alerts: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    # Модуль 4: единичная активная подписка пользователя (freemium/billing).
+    subscription: Mapped["Subscription | None"] = relationship(
+        "Subscription",
+        uselist=False,
+        back_populates="user",
+    )
 
 
 class WizardSession(Base):
@@ -78,6 +93,29 @@ class Counterparty(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class Subscription(Base):
+    """Подписка пользователя (freemium + платные тарифы)."""
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    tier: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
+    starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    user: Mapped["User"] = relationship("User", back_populates="subscription")
 
 
 async def create_all_tables() -> None:

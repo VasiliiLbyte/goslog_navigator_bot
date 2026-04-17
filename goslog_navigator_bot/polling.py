@@ -13,6 +13,7 @@ from loguru import logger
 from redis.asyncio import Redis
 
 from goslog_navigator_bot.bot.handlers.check import check_router, daily_alerts
+from goslog_navigator_bot.bot.handlers.payment import payment_router
 from goslog_navigator_bot.bot.handlers.start import router as start_router
 from goslog_navigator_bot.bot.handlers.wizard import wizard_router
 from goslog_navigator_bot.core.config import settings
@@ -43,6 +44,7 @@ async def run_polling() -> None:
     dp.include_router(start_router)
     dp.include_router(wizard_router)
     dp.include_router(check_router)
+    dp.include_router(payment_router)
 
     sched: AsyncIOScheduler | None = None
     if settings.daily_alerts_enabled:

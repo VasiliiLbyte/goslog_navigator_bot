@@ -14,6 +14,9 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
             KeyboardButton(text="🛎 Алерты выкл"),
         ],
         [
+            KeyboardButton(text="💰 Тариф"),
+        ],
+        [
             KeyboardButton(text="🏠 Вернуться в начало"),
             KeyboardButton(text="❓ FAQ"),
         ],
