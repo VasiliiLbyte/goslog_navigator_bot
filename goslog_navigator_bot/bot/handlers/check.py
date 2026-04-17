@@ -10,9 +10,10 @@ import httpx
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 from loguru import logger
 
+from goslog_navigator_bot.bot.handlers.start import cmd_start
 from goslog_navigator_bot.bot.handlers.wizard import _normalize_inn
 from goslog_navigator_bot.bot.keyboards.reply import get_main_menu_keyboard
 from goslog_navigator_bot.bot.states.user import AlertsOwnInnState, CheckINNState
@@ -71,6 +72,62 @@ async def cmd_check_inn(message: Message, state: FSMContext) -> None:
         "Введите <b>ИНН</b> контрагента (10 цифр для ООО или 12 для ИП).\n"
         "Я запрошу данные Ofdata и попробую сверить открытый реестр ГосЛог."
         + _d()
+    )
+
+
+@check_router.message(F.text == "🔍 Проверить контрагента")
+async def on_check_button(message: Message, state: FSMContext) -> None:
+    """Обработка нажатия кнопки 'Проверить контрагента'."""
+    await state.set_state(CheckINNState.waiting_for_inn)
+    await message.answer(
+        "Введите ИНН контрагента (10 или 12 цифр):",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    logger.info(
+        f"Пользователь {message.from_user.id} нажал кнопку "
+        "'Проверить контрагента' и перешёл в состояние ожидания ИНН"
+    )
+
+
+@check_router.message(F.text == "📋 Мои контрагенты")
+async def on_my_counterparties_button(message: Message) -> None:
+    """Кнопка-алиас для команды /контрагенты."""
+    await cmd_counterparties_list(message)
+
+
+@check_router.message(F.text == "🛎 Алерты вкл")
+async def on_alerts_on_button(message: Message) -> None:
+    """Кнопка-алиас для команды /алерты_вкл."""
+    await cmd_alerts_on(message)
+
+
+@check_router.message(F.text == "🛎 Алерты выкл")
+async def on_alerts_off_button(message: Message) -> None:
+    """Кнопка-алиас для команды /алерты_выкл."""
+    await cmd_alerts_off(message)
+
+
+@check_router.message(F.text == "🏠 Вернуться в начало")
+async def on_back_to_start_button(message: Message, state: FSMContext) -> None:
+    """Кнопка возврата в /start сценарий."""
+    await cmd_start(message, state)
+
+
+@check_router.message(F.text == "❓ FAQ")
+async def on_faq_button(message: Message) -> None:
+    """Короткий FAQ по основным действиям в боте."""
+    await message.answer(
+        "<b>FAQ</b>\n\n"
+        "• <b>Как проверить контрагента?</b>\n"
+        "Нажмите «🔍 Проверить контрагента» и отправьте ИНН (10/12 цифр).\n\n"
+        "• <b>Что значит «не удалось определить» в ГосЛог?</b>\n"
+        "Публичный сервис не дал однозначного ответа. Повторите позже.\n\n"
+        "• <b>Где посмотреть сохранённые проверки?</b>\n"
+        "Кнопка «📋 Мои контрагенты».\n\n"
+        "• <b>Как включить ежедневные уведомления?</b>\n"
+        "Кнопка «🛎 Алерты вкл»."
+        + _d(),
+        reply_markup=get_main_menu_keyboard(),
     )
 
 
