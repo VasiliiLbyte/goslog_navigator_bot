@@ -89,6 +89,15 @@ async def _get_monthly_checks_used(user_id: int) -> int:
     return int(count or 0)
 
 
+async def is_free_user_limit_exceeded(user_id: int) -> bool:
+    """Проверка лимита free-тарифа: 3 проверки контрагентов в месяц."""
+    tier = await _get_user_tier(user_id)
+    if tier != "free":
+        return False
+    used = await _get_monthly_checks_used(user_id)
+    return used >= 3
+
+
 @check_router.message(Command("проверить_инн"))
 async def cmd_check_inn(message: Message, state: FSMContext) -> None:
     """Старт сценария: ждём ИНН от пользователя."""
@@ -173,18 +182,12 @@ async def on_inn_input(message: Message, state: FSMContext) -> None:
         )
         return
 
-    tier = await _get_user_tier(uid)
-    if tier == "free":
-        used = await _get_monthly_checks_used(uid)
-        if used >= 3:
-            await state.clear()
-            await message.answer(
-                "Лимит free-тарифа исчерпан: 3 проверки контрагентов в месяц.\n"
-                "Перейдите на платный тариф через /тариф или кнопку «💰 Тариф»."
-                + _d(),
-                reply_markup=get_main_menu_keyboard(),
-            )
-            return
+    if await is_free_user_limit_exceeded(uid):
+        await state.clear()
+        await message.answer(
+            "❌ Лимит бесплатных проверок (3 в месяц) исчерпан.\nКупите подписку /тариф"
+        )
+        return
 
     try:
         result = await _check_counterparty(inn, uid)

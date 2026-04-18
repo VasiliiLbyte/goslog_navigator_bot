@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # PostgreSQL
     db_url: str  # asyncpg DSN: postgresql+asyncpg://user:pass@host:5432/db
+    db_create_all_fallback: bool = False
 
     # Redis (для FSM storage)
     redis_url: str = "redis://localhost:6379/0"

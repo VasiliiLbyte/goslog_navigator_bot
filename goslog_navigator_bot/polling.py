@@ -70,8 +70,13 @@ async def run_polling() -> None:
             await conn.run_sync(lambda _: None)
         logger.info("PostgreSQL подключён: OK")
 
-        await create_all_tables()
-        logger.info("✅ Все таблицы созданы")
+        if settings.db_create_all_fallback:
+            await create_all_tables()
+            logger.warning(
+                "⚠️ Включён DB_CREATE_ALL_FALLBACK: используются ORM create_all вместо Alembic"
+            )
+        else:
+            logger.info("DB_CREATE_ALL_FALLBACK=false: ожидается схема, подготовленная Alembic")
 
         if sched is not None:
             sched.start()

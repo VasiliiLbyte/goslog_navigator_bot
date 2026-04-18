@@ -60,6 +60,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """При старте — webhook + проверка коннектов; при остановке — cleanup."""
     sched = None
     logger.info("🚀 Запуск ГосЛог Навигатор бота...")
+    _app.add_api_route("/yookassa/webhook", yookassa_webhook, methods=["POST"])
 
     # Устанавливаем webhook только в webhook-режиме.
     if settings.bot_mode == "webhook":
@@ -122,15 +123,15 @@ async def telegram_webhook(request: Request) -> JSONResponse:
     return JSONResponse(content={"ok": True})
 
 
-@app.post("/yookassa/webhook")
-async def yookassa_webhook(request: Request) -> JSONResponse:
-    """Webhook-обработчик событий оплаты ЮKassa."""
-    payload = await request.json()
-    result = await process_yookassa_webhook(payload)
-    return JSONResponse(content=result)
-
-
 @app.get("/health")
 async def health() -> dict[str, str]:
     """Healthcheck для мониторинга / Docker."""
+    return {"status": "ok"}
+
+
+async def yookassa_webhook(request: Request) -> dict[str, str]:
+    # обработка уведомления от ЮKassa
+    payload = await request.json()
+    await process_yookassa_webhook(payload)
+    logger.info("Получен webhook от ЮKassa")
     return {"status": "ok"}
